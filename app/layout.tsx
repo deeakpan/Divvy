@@ -33,13 +33,10 @@ const brandWord = Unbounded({
   display: "swap",
 });
 
+/** Tab / home-screen icons: keep `app/icon.png` and `app/apple-icon.png` in sync with `public/divvy.png` when the brand asset changes. */
 export const metadata: Metadata = {
   title: "Divvy: Split your tokens. Earn everywhere.",
   description: "Deposit STRK or ETH. Divvy splits it automatically across staking, USDC yield, and your cold wallet. All in one transaction on Starknet.",
-  icons: {
-    icon: [{ url: "/divvy.png", type: "image/png" }],
-    apple: "/divvy.png",
-  },
 };
 
 export default function RootLayout({
