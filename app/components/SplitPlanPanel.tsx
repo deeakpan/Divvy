@@ -98,6 +98,18 @@ function bpsToPctFieldString(bps: number): string {
     : String(Number(x.toFixed(4))).replace(/\.?0+$/, "");
 }
 
+/** BPS for STRK slice preview while Share % is being edited (committed config updates on blur only). */
+function previewBpsForRow(bpsKey: BpsKey, config: SplitPlanConfig, drafts: Partial<Record<BpsKey, string>>): number {
+  const committed = config[bpsKey];
+  const draft = drafts[bpsKey];
+  if (draft === undefined) return committed;
+  const t = draft.trim();
+  if (t === "") return 0;
+  const v = Number(t);
+  if (!Number.isFinite(v)) return committed;
+  return Math.max(0, Math.min(SPLIT_TOTAL_BPS, Math.round(Math.min(100, Math.max(0, v)) * 100)));
+}
+
 async function fetchTokenBalance(tokenAddress: string, account: string) {
   const u = new URL("/api/balance", window.location.origin);
   u.searchParams.set("token", tokenAddress);
@@ -518,7 +530,7 @@ export function SplitPlanPanel({ address }: Props) {
         <div className="app-split-alloc-stack">
           {BUCKETS.map((b) => {
             const enabled = config[b.enKey];
-            const bps = config[b.bpsKey];
+            const bps = previewBpsForRow(b.bpsKey, config, pctDrafts);
             const slice = enabled ? strkSliceForBps(strkWei, bps) : 0n;
             const pctDisplay =
               pctDrafts[b.bpsKey] !== undefined ? pctDrafts[b.bpsKey]! : bpsToPctFieldString(bps);
