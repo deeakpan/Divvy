@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# project-specific
+.claude/
+scratchpad*.md
+AGENTS.md
+CLAUDE.md
+avnu-contracts-v2/
