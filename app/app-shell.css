@@ -1245,6 +1245,12 @@
   color: rgba(253, 224, 138, 0.95);
 }
 
+.app-split-banner--ok {
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.28);
+  color: rgba(110, 231, 183, 0.95);
+}
+
 .app-split-meta {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.6);
@@ -1255,6 +1261,94 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.app-saved-dropdown {
+  position: relative;
+  max-width: 420px;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 12px;
+}
+
+.app-saved-dropdown-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  padding: 12px 12px;
+  cursor: pointer;
+}
+
+.app-saved-dropdown-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-saved-dropdown-logo {
+  border-radius: 999px;
+}
+
+.app-saved-dropdown-symbol {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.app-saved-dropdown-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-saved-dropdown-amount {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.app-saved-dropdown-arrow {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.app-saved-dropdown-menu {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: calc(100% + 6px);
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(15, 18, 26, 0.95);
+  padding: 6px;
+  backdrop-filter: blur(8px);
+}
+
+.app-saved-dropdown-option {
+  width: 100%;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.88);
+  padding: 8px 9px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.app-saved-dropdown-option:hover,
+.app-saved-dropdown-option.is-active {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .app-split-balance-row {

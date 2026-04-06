@@ -139,7 +139,7 @@ function Hero({ onLaunch }: { onLaunch: () => void }) {
             fontWeight: 400,
           }}
         >
-          Divvy routes each deposit through staking, USDC yield on Vesu, cold-wallet forwarding, and liquid balance in one programmable flow. Built for people who want their assets working without living in dashboards.
+          You pick percentages once. On each deposit, Divvy splits your STRK into four buckets: staking, USDC yield on Vesu, cold-wallet transfer, and liquid balance in your wallet. One confirmation, then each bucket runs automatically with your rules.
         </p>
 
         <div style={{ marginTop: 40, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
@@ -179,14 +179,14 @@ function Pillars() {
     },
     {
       title: "Modular splits",
-      body: "Adjust staking, yield, forwarding, and liquid percentages. One batched flow through StarkZap-style execution keeps gas and UX tight.",
+      body: "Set a percent for each bucket, and Divvy applies that split every time. You can change the mix anytime without rebuilding your whole strategy.",
       illu: (
         <Browser uniqueId="pillar-modular" size={118} mood="happy" color="#7eb8ff" className="lp-pillar-kawaii" />
       ),
     },
     {
       title: "Built to scale",
-      body: "Testnet uses canonical assets and Vesu’s test environment; mainnet swaps borrow for real routes while keeping the same user-facing split.",
+      body: "The same split model works across environments: test on Sepolia first, then keep the same setup when using live routes.",
       illu: (
         <Planet uniqueId="pillar-scale" size={118} mood="excited" color="#9dd6ff" className="lp-pillar-kawaii" />
       ),
@@ -231,7 +231,7 @@ function Unlock() {
           Unlock Starknet yield rails.
         </h2>
         <p style={{ marginTop: 20, maxWidth: 560, fontSize: 17, lineHeight: 1.65, color: "var(--lp-on-navy-muted)" }}>
-          Whether you’re compounding STRK, parking ETH, or dollarizing a slice into USDC on Vesu, Divvy keeps the moving parts behind one opinionated product surface, similar to how wallet infrastructure abstracts keys, but here for how your balance is deployed.
+          Instead of manually staking, lending, and forwarding funds in separate apps, Divvy does the split in one flow. You keep custody, choose the percentages, and decide where each part of the balance goes.
         </p>
         <a
           href="#product"
@@ -374,22 +374,23 @@ function ProductBlocks() {
     {
       id: "how",
       title: "How it works",
-      lead: "Connect, choose your percentages, confirm once.",
+      lead: "Connect, set your split, and confirm one transaction.",
       bullets: [
-        "Wallet or Cartridge: the same Starknet address owns every position.",
-        "Divvy composes stake, Vesu deposit, transfer to cold address, and leave liquid, subject to your policy.",
-        "Withdrawals unwind lending first; staking follows network unbonding rules.",
+        "Use your Starknet wallet (or Cartridge). Assets stay under your address.",
+        "Set percentages for stake, Vesu USDC yield, cold-wallet forwarding, and liquid.",
+        "On deposit, Divvy executes those actions in one batched flow instead of four separate manual steps.",
+        "When you change percentages, the next run uses your new split.",
       ],
     },
     {
       id: "split",
       title: "What gets routed",
-      lead: "Four buckets. One transaction intent.",
+      lead: "Each deposit is split into four buckets.",
       bullets: [
-        "Staking: STRK delegation where the chain supports it.",
-        "USDC yield via Vesu lending; testnet may use minted test USDC, mainnet uses swaps + deposit.",
-        "Cold wallet: fixed % sent to an address you control.",
-        "Liquid: stays in your wallet for immediate use.",
+        "Staking: a chosen % of STRK goes to delegation.",
+        "Vesu yield: a chosen % is converted/routed into USDC lending on Vesu.",
+        "Cold wallet: a chosen % is sent to your own external address.",
+        "Liquid: the rest stays available in-wallet for immediate use.",
       ],
     },
   ];

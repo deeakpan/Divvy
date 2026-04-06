@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { APP_CHAIN, SEPOLIA_WALLET_ERC20, TOKENS, type TokenSymbol } from "../lib/constants";
+import { APP_CHAIN, SEPOLIA_WALLET_ERC20, TOKENS } from "../lib/constants";
 import {
   DEFAULT_SPLIT_CONFIG,
   formatTokenAmount,
@@ -152,9 +152,13 @@ export function SplitPlanPanel({ address }: Props) {
 
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [saveOk, setSaveOk] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const saveOkTimerRef = useRef<number | null>(null);
 
   const [copiedKey, setCopiedKey] = useState<WalletRowKey | null>(null);
+  const [savedAssetOpen, setSavedAssetOpen] = useState(false);
+  const [savedAssetKey, setSavedAssetKey] = useState<WalletRowKey>("STRK");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [thresholdDraft, setThresholdDraft] = useState(() => String(DEFAULT_SPLIT_CONFIG.threshold_strk));
   const [spotEth, setSpotEth] = useState<number | null>(null);
@@ -261,6 +265,12 @@ export function SplitPlanPanel({ address }: Props) {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (saveOkTimerRef.current != null) window.clearTimeout(saveOkTimerRef.current);
+    };
+  }, []);
+
   const strkWei = useMemo(() => {
     if (!live?.STRK) return 0n;
     return u256ToBigInt(live.STRK.low, live.STRK.high);
@@ -304,6 +314,7 @@ export function SplitPlanPanel({ address }: Props) {
 
   const save = async () => {
     setSaveErr(null);
+    setSaveOk(null);
     const effective = effectiveConfig;
     const v = validateSplitConfig(effective);
     if (v) {
@@ -336,6 +347,9 @@ export function SplitPlanPanel({ address }: Props) {
       setThresholdDraft(String(effective.threshold_strk));
       if (data.plan?.balance_snapshot) setLoadedSnapshot(data.plan.balance_snapshot as SplitPlanBalanceSnapshot);
       if (data.plan?.updated_at) setUpdatedAt(data.plan.updated_at);
+      setSaveOk("Split plan saved.");
+      if (saveOkTimerRef.current != null) window.clearTimeout(saveOkTimerRef.current);
+      saveOkTimerRef.current = window.setTimeout(() => setSaveOk(null), 2600);
     } catch (e) {
       setSaveErr(e instanceof Error ? e.message : "Save failed.");
     } finally {
@@ -351,18 +365,9 @@ export function SplitPlanPanel({ address }: Props) {
     window.setTimeout(() => setCopiedKey(null), 1400);
   };
 
-  const displayRow = (sym: TokenSymbol, snap: SplitPlanBalanceSnapshot | null) => {
-    const t = TOKENS[sym];
-    const cell = snap?.[sym];
-    const raw = cell ? u256ToBigInt(cell.low, cell.high) : 0n;
-    const formatted = formatTokenAmount(raw, t.decimals);
-    return (
-      <div key={sym} className="app-split-balance-row">
-        <span className="app-split-balance-label">{t.symbol}</span>
-        <span className="app-split-balance-value font-mono">{snap ? formatted : "—"}</span>
-      </div>
-    );
-  };
+  const selectedSavedAsset = WALLET_ROWS.find((r) => r.key === savedAssetKey) ?? WALLET_ROWS[0];
+  const selectedSavedCell = loadedSnapshot?.[selectedSavedAsset.key];
+  const selectedSavedRaw = selectedSavedCell ? u256ToBigInt(selectedSavedCell.low, selectedSavedCell.high) : 0n;
 
   const showAllocExtraError = Boolean(validationMsg && validationMsg !== SPLIT_VALIDATION_SUM_MSG);
 
@@ -420,7 +425,6 @@ export function SplitPlanPanel({ address }: Props) {
           )}
         </div>
         {loadErr && <p className="app-split-banner app-split-banner--warn">{loadErr}</p>}
-        {saveErr && <p className="app-split-banner app-split-banner--warn">{saveErr}</p>}
       </header>
 
       <div className="app-split-bal-compact">
@@ -487,11 +491,56 @@ export function SplitPlanPanel({ address }: Props) {
               <time dateTime={updatedAt}>{new Date(updatedAt).toLocaleString()}</time>
             </p>
           )}
-          {loadedSnapshot && (
-            <div className="app-split-balance-grid">
-              {displayRow("STRK", loadedSnapshot)}
-              {displayRow("ETH", loadedSnapshot)}
-              {displayRow("USDC", loadedSnapshot)}
+          {loadedSnapshot && selectedSavedAsset && (
+            <div className="app-saved-dropdown">
+              <button
+                type="button"
+                className="app-saved-dropdown-trigger"
+                onClick={() => setSavedAssetOpen((o) => !o)}
+                aria-expanded={savedAssetOpen}
+                aria-haspopup="listbox"
+              >
+                <span className="app-saved-dropdown-left">
+                  <Image
+                    src={selectedSavedAsset.logo}
+                    alt=""
+                    width={22}
+                    height={22}
+                    className="app-saved-dropdown-logo"
+                  />
+                  <span className="app-saved-dropdown-symbol">{selectedSavedAsset.symbol}</span>
+                </span>
+                <span className="app-saved-dropdown-right">
+                  <span className="app-saved-dropdown-amount font-mono">
+                    {formatTokenAmount(selectedSavedRaw, selectedSavedAsset.decimals)}
+                  </span>
+                  <span className="app-saved-dropdown-arrow" aria-hidden>
+                    {savedAssetOpen ? "▴" : "▾"}
+                  </span>
+                </span>
+              </button>
+              {savedAssetOpen && (
+                <div className="app-saved-dropdown-menu" role="listbox" aria-label="Last saved asset">
+                  {WALLET_ROWS.map((row) => (
+                    <button
+                      key={row.key}
+                      type="button"
+                      role="option"
+                      aria-selected={savedAssetKey === row.key}
+                      className={`app-saved-dropdown-option ${savedAssetKey === row.key ? "is-active" : ""}`}
+                      onClick={() => {
+                        setSavedAssetKey(row.key);
+                        setSavedAssetOpen(false);
+                      }}
+                    >
+                      <span className="app-saved-dropdown-left">
+                        <Image src={row.logo} alt="" width={20} height={20} className="app-saved-dropdown-logo" />
+                        <span className="app-saved-dropdown-symbol">{row.symbol}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -620,17 +669,31 @@ export function SplitPlanPanel({ address }: Props) {
           Enabled total {(sumBps / 100).toFixed(2)}%{sumOk && !validationMsg ? "" : " — need 100%"}
         </p>
         {showAllocExtraError && <p className="app-split-alloc-err">{validationMsg}</p>}
-        <button
-          type="button"
-          className="app-split-secondary"
-          onClick={() => {
-            setConfig(DEFAULT_SPLIT_CONFIG);
-            setThresholdDraft(String(DEFAULT_SPLIT_CONFIG.threshold_strk));
-            setPctDrafts({});
-          }}
-        >
-          Reset defaults
-        </button>
+        <div className="app-split-actions">
+          <button
+            type="button"
+            className="app-split-save app-connect-cta font-display"
+            onClick={() => void save()}
+            disabled={!canSave}
+          >
+            {saving ? "Saving…" : "Save plan"}
+          </button>
+          <button
+            type="button"
+            className="app-split-secondary"
+            onClick={() => {
+              setConfig(DEFAULT_SPLIT_CONFIG);
+              setThresholdDraft(String(DEFAULT_SPLIT_CONFIG.threshold_strk));
+              setPctDrafts({});
+              setSaveErr(null);
+              setSaveOk(null);
+            }}
+          >
+            Reset defaults
+          </button>
+        </div>
+        {saveErr && <p className="app-split-banner app-split-banner--warn">{saveErr}</p>}
+        {saveOk && <p className="app-split-banner app-split-banner--ok">{saveOk}</p>}
       </section>
     </div>
   );
