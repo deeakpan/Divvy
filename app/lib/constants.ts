@@ -119,3 +119,8 @@ export const STRIKE_SCALAR = 10n ** BigInt(12 + PRAGMA_DECIMALS);
 
 export const CHAIN_ID = "0x534e5f5345504f4c4941"; // SN_SEPOLIA
 export const RPC_URL = "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/O6ulR1EPy8Sn4fYG8_kqU";
+
+/** Canonical Divvy FPMM contract address (frontend-configurable). */
+export const DIVVY_FPMM_ADDRESS =
+  process.env.NEXT_PUBLIC_DIVVY_FPMM?.trim() ||
+  "0x63ce4181a16268ac9588c4868c19b1f281d8912ebace42a6469983c1451eaa9";

@@ -59,7 +59,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(WALLET_METHOD_KEY);
   }, []);
 
-  // Auto-reconnect browser wallet (Cartridge handles its own session)
+  // Auto-reconnect browser wallet only.
+  // Cartridge reconnect can trigger a confirmation popup on refresh in some setups,
+  // so we require explicit user action for Cartridge connections.
   useEffect(() => {
     const saved = localStorage.getItem(WALLET_METHOD_KEY);
     if (saved === "browser") {
@@ -67,7 +69,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem(WALLET_METHOD_KEY);
       });
     }
-    // Cartridge reconnects automatically via its own session management
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (

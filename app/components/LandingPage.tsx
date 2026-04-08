@@ -64,7 +64,7 @@ export default function LandingPage() {
   const goApp = useCallback(() => {
     setConnectOpen(false);
     setConnectErr(null);
-    router.push("/app");
+    router.push("/markets");
   }, [router]);
 
   const pickCartridge = useCallback(async () => {
@@ -124,13 +124,13 @@ export default function LandingPage() {
       {/* ── top nav ── */}
       <div className="lp__nav-wrap">
         <nav className="lp__nav font-mono" aria-label="Primary">
-          <a className="lp__nav-link" href="/app">Markets</a>
+          <a className="lp__nav-link" href="/markets">Markets</a>
           <span className="lp__nav-dot" aria-hidden />
-          <a className="lp__nav-link" href="/app">Yield</a>
+          <a className="lp__nav-link" href="/markets">Yield</a>
           <span className="lp__nav-dot" aria-hidden />
-          <a className="lp__nav-link" href="/app">Leaderboard</a>
+          <a className="lp__nav-link" href="/markets">Leaderboard</a>
           <span className="lp__nav-dot" aria-hidden />
-          <a className="lp__nav-link" href="/app">Docs</a>
+          <a className="lp__nav-link" href="/markets">Docs</a>
         </nav>
       </div>
 

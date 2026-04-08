@@ -400,8 +400,9 @@ pub mod DivvyFPMM {
             assert(get_block_timestamp() >= self.market_expiry.read(market_id), 'not expired');
 
             let feed = self.market_feed.read(market_id);
-            let (_, answer, _, _, updated_at) = IChainlinkAggregatorDispatcher { contract_address: feed }
-                .latest_round_data();
+            let (_, answer, _, updated_at, _) = IChainlinkAggregatorDispatcher {
+                contract_address: feed,
+            }.latest_round_data();
             assert(answer > 0_u128, 'zero px');
 
             let threshold = self.market_threshold.read(market_id);

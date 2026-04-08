@@ -15,7 +15,7 @@ pub trait IERC20<TContractState> {
 #[starknet::interface]
 pub trait IChainlinkAggregator<TContractState> {
     fn decimals(self: @TContractState) -> u8;
-    fn latest_round_data(self: @TContractState) -> (u128, u128, u64, u64, u64);
+    fn latest_round_data(self: @TContractState) -> (felt252, u128, u64, u64, felt252);
 }
 
 #[starknet::interface]

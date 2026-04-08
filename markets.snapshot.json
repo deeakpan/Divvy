@@ -1,0 +1,44 @@
+{
+  "contract": "0x234f34687defdab45795c94df2d5e17f1669ae31793d05edba70c1d3b64ba8c",
+  "fetched_at_unix": 1775666692,
+  "fetched_at_utc": "2026-04-08T16:44:52.000Z",
+  "count": 2,
+  "range_start": 1,
+  "range_end_inclusive": 1,
+  "markets": [
+    {
+      "id": 0,
+      "question": "ETH>2239.54 by 260408 16:52Z",
+      "feed": "0x8ed94479864161b612f4d77555e3a71089b2bfcae2d544e09b617113932611",
+      "expiry_time": 1775667142,
+      "expiry_utc": "2026-04-08T16:52:22.000Z",
+      "threshold": "223954370000",
+      "created_at": 1775665963,
+      "resolved": false,
+      "outcome_yes": false,
+      "resolved_price": "0",
+      "resolved_timestamp": 0,
+      "yes_reserve": "10000000",
+      "no_reserve": "10000000",
+      "collateral": "20000000",
+      "status": "active"
+    },
+    {
+      "id": 1,
+      "question": "ETH>2234.31 by 260408 16:05Z",
+      "feed": "0x8ed94479864161b612f4d77555e3a71089b2bfcae2d544e09b617113932611",
+      "expiry_time": 1775664321,
+      "expiry_utc": "2026-04-08T16:05:21.000Z",
+      "threshold": "223431190000",
+      "created_at": 1775663151,
+      "resolved": false,
+      "outcome_yes": false,
+      "resolved_price": "0",
+      "resolved_timestamp": 0,
+      "yes_reserve": "10000000",
+      "no_reserve": "10000000",
+      "collateral": "20000000",
+      "status": "expired"
+    }
+  ]
+}
