@@ -3,7 +3,7 @@
  */
 
 const GECKO_PAIR =
-  "https://api.coingecko.com/api/v3/simple/price?ids=ethereum,starknet&vs_currencies=usd";
+  "https://api.coingecko.com/api/v3/simple/price?ids=ethereum,starknet,bitcoin&vs_currencies=usd";
 
 function parseUsd(v: unknown): number | null {
   if (v == null) return null;
@@ -15,21 +15,23 @@ function parseUsd(v: unknown): number | null {
   return null;
 }
 
-/** One request for ETH + STRK USD (used by /api/spot-prices). */
+/** One request for ETH + STRK + BTC USD (used by /api/spot-prices). */
 export async function fetchEthStrkUsdFromCoinGecko(): Promise<{
   ethUsd: number | null;
   strkUsd: number | null;
+  btcUsd: number | null;
 }> {
   try {
     const r = await fetch(GECKO_PAIR, { cache: "no-store" });
-    if (!r.ok) return { ethUsd: null, strkUsd: null };
+    if (!r.ok) return { ethUsd: null, strkUsd: null, btcUsd: null };
     const d = (await r.json()) as Record<string, { usd?: unknown } | undefined>;
     return {
       ethUsd: parseUsd(d.ethereum?.usd),
       strkUsd: parseUsd(d.starknet?.usd),
+      btcUsd: parseUsd(d.bitcoin?.usd),
     };
   } catch {
-    return { ethUsd: null, strkUsd: null };
+    return { ethUsd: null, strkUsd: null, btcUsd: null };
   }
 }
 

@@ -165,6 +165,7 @@ export function SplitPlanPanel({ address }: Props) {
   const [spotStrk, setSpotStrk] = useState<number | null>(null);
   const [pctDrafts, setPctDrafts] = useState<Partial<Record<BpsKey, string>>>({});
   const [vesuStrkSupplyApy, setVesuStrkSupplyApy] = useState<number | null>(null);
+  const [isEditing, setIsEditing] = useState(true);
 
   const refreshBalances = useCallback(async () => {
     setBalanceErr(null);
@@ -219,6 +220,7 @@ export function SplitPlanPanel({ address }: Props) {
           setConfig(parsed);
           setThresholdDraft(String(parsed.threshold_strk));
           setPctDrafts({});
+          setIsEditing(false);
         }
       }
       if (data.plan?.balance_snapshot) {
@@ -368,6 +370,7 @@ export function SplitPlanPanel({ address }: Props) {
   const selectedSavedAsset = WALLET_ROWS.find((r) => r.key === savedAssetKey) ?? WALLET_ROWS[0];
   const selectedSavedCell = loadedSnapshot?.[selectedSavedAsset.key];
   const selectedSavedRaw = selectedSavedCell ? u256ToBigInt(selectedSavedCell.low, selectedSavedCell.high) : 0n;
+  const enabledBuckets = BUCKETS.filter((b) => config[b.enKey]);
 
   const showAllocExtraError = Boolean(validationMsg && validationMsg !== SPLIT_VALIDATION_SUM_MSG);
 
@@ -392,14 +395,16 @@ export function SplitPlanPanel({ address }: Props) {
           )}
         </p>
         <div className="app-split-toolbar">
-          <button
-            type="button"
-            className="app-split-save app-connect-cta font-display"
-            onClick={() => void save()}
-            disabled={!canSave}
-          >
-            {saving ? "Saving…" : "Save plan"}
-          </button>
+          {isEditing && (
+            <button
+              type="button"
+              className="app-split-save app-connect-cta font-display"
+              onClick={() => void save()}
+              disabled={!canSave}
+            >
+              {saving ? "Saving…" : "Save plan"}
+            </button>
+          )}
           <button
             type="button"
             className="app-split-refresh app-split-refresh--ghost"
@@ -416,9 +421,9 @@ export function SplitPlanPanel({ address }: Props) {
                   : balanceErr
                     ? "Fix error below."
                     : "Loading…"
-                : !sumOk || validationMsg
+                : isEditing && (!sumOk || validationMsg)
                   ? "Fix allocation below."
-                  : saving
+                  : isEditing && saving
                     ? "…"
                     : ""}
             </span>
@@ -492,7 +497,7 @@ export function SplitPlanPanel({ address }: Props) {
             </p>
           )}
           {loadedSnapshot && selectedSavedAsset && (
-            <div className="app-saved-dropdown">
+            <div className="app-saved-asset-picker">
               <button
                 type="button"
                 className="app-saved-dropdown-trigger"
@@ -521,24 +526,31 @@ export function SplitPlanPanel({ address }: Props) {
               </button>
               {savedAssetOpen && (
                 <div className="app-saved-dropdown-menu" role="listbox" aria-label="Last saved asset">
-                  {WALLET_ROWS.map((row) => (
-                    <button
-                      key={row.key}
-                      type="button"
-                      role="option"
-                      aria-selected={savedAssetKey === row.key}
-                      className={`app-saved-dropdown-option ${savedAssetKey === row.key ? "is-active" : ""}`}
-                      onClick={() => {
-                        setSavedAssetKey(row.key);
-                        setSavedAssetOpen(false);
-                      }}
-                    >
-                      <span className="app-saved-dropdown-left">
-                        <Image src={row.logo} alt="" width={20} height={20} className="app-saved-dropdown-logo" />
-                        <span className="app-saved-dropdown-symbol">{row.symbol}</span>
-                      </span>
-                    </button>
-                  ))}
+                  {WALLET_ROWS.map((row) => {
+                    const rowCell = loadedSnapshot[row.key];
+                    const rowRaw = u256ToBigInt(rowCell.low, rowCell.high);
+                    return (
+                      <button
+                        key={row.key}
+                        type="button"
+                        role="option"
+                        aria-selected={savedAssetKey === row.key}
+                        className={`app-saved-dropdown-option ${savedAssetKey === row.key ? "is-active" : ""}`}
+                        onClick={() => {
+                          setSavedAssetKey(row.key);
+                          setSavedAssetOpen(false);
+                        }}
+                      >
+                        <span className="app-saved-dropdown-left">
+                          <Image src={row.logo} alt="" width={20} height={20} className="app-saved-dropdown-logo" />
+                          <span className="app-saved-dropdown-symbol">{row.symbol}</span>
+                        </span>
+                        <span className="app-saved-dropdown-amount font-mono">
+                          {formatTokenAmount(rowRaw, row.decimals)}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -547,153 +559,209 @@ export function SplitPlanPanel({ address }: Props) {
       )}
 
       <section className="app-split-alloc-wrap" aria-labelledby="split-alloc-heading">
-        <h3 id="split-alloc-heading" className="app-split-section-plain-title">
-          Allocation
-        </h3>
-        <label className="app-split-threshold">
-          <span>STRK threshold (new cycle)</span>
-          <input
-            type="text"
-            inputMode="decimal"
-            className="app-split-threshold-input font-mono"
-            autoComplete="off"
-            value={thresholdDraft}
-            onChange={(e) => setThresholdDraft(e.target.value)}
-            onBlur={() => {
-              const t = thresholdDraft.trim();
-              if (t === "") {
-                setThresholdDraft(String(config.threshold_strk));
-                return;
-              }
-              const n = Number(t);
-              if (Number.isFinite(n) && n > 0) {
-                setConfig((c) => ({ ...c, threshold_strk: n }));
-                setThresholdDraft(String(n));
-              } else {
-                setThresholdDraft(String(config.threshold_strk));
-              }
-            }}
-          />
-        </label>
+        <div className="app-split-alloc-head">
+          <h3 id="split-alloc-heading" className="app-split-section-plain-title">
+            Allocation
+          </h3>
+          {!isEditing && (
+            <button
+              type="button"
+              className="app-split-edit-btn"
+              onClick={() => setIsEditing(true)}
+              aria-label="Edit split plan"
+              title="Edit split plan"
+            >
+              ✎
+            </button>
+          )}
+        </div>
 
-        <div className="app-split-alloc-stack">
-          {BUCKETS.map((b) => {
-            const enabled = config[b.enKey];
-            const bps = previewBpsForRow(b.bpsKey, config, pctDrafts);
-            const slice = enabled ? strkSliceForBps(strkWei, bps) : 0n;
-            const pctDisplay =
-              pctDrafts[b.bpsKey] !== undefined ? pctDrafts[b.bpsKey]! : bpsToPctFieldString(bps);
-            return (
-              <div key={b.enKey} className="app-split-alloc-item">
-                <div className="app-split-alloc-item-top">
-                  <span className="app-split-alloc-label">{b.label}</span>
-                  <label className="app-split-switch">
-                    <input
-                      type="checkbox"
-                      checked={enabled}
-                      onChange={(e) => setEnabled(b.enKey, b.bpsKey, e.target.checked)}
-                    />
-                    <span className="app-split-switch-ui" aria-hidden />
-                  </label>
+        {!isEditing && (
+          <div className="app-split-summary">
+            {enabledBuckets.length > 0 ? (
+              <>
+                {enabledBuckets.map((b) => (
+                  <div key={b.bpsKey} className="app-split-summary-row">
+                    <span>{b.label}</span>
+                    <span className="font-mono">{(config[b.bpsKey] / 100).toFixed(2)}%</span>
+                  </div>
+                ))}
+                <div className="app-split-summary-row">
+                  <span>STRK threshold</span>
+                  <span className="font-mono">{config.threshold_strk}</span>
                 </div>
-                {enabled && (
-                  <div className="app-split-alloc-item-body">
-                    {b.bpsKey === "vesu_yield_bps" && (
-                      <p
-                        className="app-split-vesu-apy"
-                        title="From Vesu market stats (same lending protocol StarkZap exposes as wallet.lending() on Starknet)."
-                      >
-                        Vesu STRK supply APY:{" "}
-                        <span className="font-mono">
-                          {vesuStrkSupplyApy != null && Number.isFinite(vesuStrkSupplyApy)
-                            ? `${(vesuStrkSupplyApy * 100).toFixed(2)}%`
-                            : "—"}
-                        </span>
-                      </p>
-                    )}
-                    <label className="app-split-pct-field">
-                      <span className="app-split-pct-field-label">Share %</span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        className="app-split-pct-input-wide font-mono"
-                        autoComplete="off"
-                        value={pctDisplay}
-                        onChange={(e) =>
-                          setPctDrafts((d) => ({ ...d, [b.bpsKey]: e.target.value }))
-                        }
-                        onBlur={() => {
-                          const key = b.bpsKey;
-                          const draft = pctDrafts[key];
-                          const raw = (draft !== undefined ? draft : bpsToPctFieldString(bps)).trim();
-                          setPctDrafts((d) => {
-                            const next = { ...d };
-                            delete next[key];
-                            return next;
-                          });
-                          if (raw === "") {
-                            setBps(key, 0);
-                            return;
-                          }
-                          const v = Number(raw);
-                          if (Number.isFinite(v)) {
-                            setBps(key, Math.round(Math.min(100, Math.max(0, v)) * 100));
-                          }
-                        }}
-                      />
-                    </label>
-                    <p className="app-split-strk-slice font-mono">
-                      ≈ {formatTokenAmount(slice, 18, 5)} STRK
-                    </p>
-                    {b.forwarding && (
-                      <input
-                        type="text"
-                        className="app-split-fwd-input font-mono"
-                        placeholder="Forward to 0x…"
-                        value={config.cold_wallet_address}
-                        onChange={(e) => setConfig((c) => ({ ...c, cold_wallet_address: e.target.value }))}
-                        autoComplete="off"
-                        spellCheck={false}
-                      />
-                    )}
+                {config.cold_wallet_enabled && config.cold_wallet_address && (
+                  <div className="app-split-summary-row app-split-summary-row--stack">
+                    <span>Forwarding address</span>
+                    <span className="font-mono">{abbrevContract(config.cold_wallet_address)}</span>
                   </div>
                 )}
-              </div>
-            );
-          })}
-        </div>
+              </>
+            ) : (
+              <p className="app-split-summary-empty">No active buckets. Tap the pencil to edit.</p>
+            )}
+          </div>
+        )}
 
-        <p
-          className={`app-split-sum ${sumOk && !validationMsg ? "app-split-sum--ok" : "app-split-sum--bad"}`}
-        >
-          Enabled total {(sumBps / 100).toFixed(2)}%{sumOk && !validationMsg ? "" : " — need 100%"}
-        </p>
-        {showAllocExtraError && <p className="app-split-alloc-err">{validationMsg}</p>}
-        <div className="app-split-actions">
-          <button
-            type="button"
-            className="app-split-save app-connect-cta font-display"
-            onClick={() => void save()}
-            disabled={!canSave}
-          >
-            {saving ? "Saving…" : "Save plan"}
-          </button>
-          <button
-            type="button"
-            className="app-split-secondary"
-            onClick={() => {
-              setConfig(DEFAULT_SPLIT_CONFIG);
-              setThresholdDraft(String(DEFAULT_SPLIT_CONFIG.threshold_strk));
-              setPctDrafts({});
-              setSaveErr(null);
-              setSaveOk(null);
-            }}
-          >
-            Reset defaults
-          </button>
-        </div>
-        {saveErr && <p className="app-split-banner app-split-banner--warn">{saveErr}</p>}
-        {saveOk && <p className="app-split-banner app-split-banner--ok">{saveOk}</p>}
+        {isEditing && (
+          <>
+            <label className="app-split-threshold">
+              <span>STRK threshold (new cycle)</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                className="app-split-threshold-input font-mono"
+                autoComplete="off"
+                value={thresholdDraft}
+                onChange={(e) => setThresholdDraft(e.target.value)}
+                onBlur={() => {
+                  const t = thresholdDraft.trim();
+                  if (t === "") {
+                    setThresholdDraft(String(config.threshold_strk));
+                    return;
+                  }
+                  const n = Number(t);
+                  if (Number.isFinite(n) && n > 0) {
+                    setConfig((c) => ({ ...c, threshold_strk: n }));
+                    setThresholdDraft(String(n));
+                  } else {
+                    setThresholdDraft(String(config.threshold_strk));
+                  }
+                }}
+              />
+            </label>
+
+            <div className="app-split-alloc-stack">
+              {BUCKETS.map((b) => {
+                const enabled = config[b.enKey];
+                const bps = previewBpsForRow(b.bpsKey, config, pctDrafts);
+                const slice = enabled ? strkSliceForBps(strkWei, bps) : 0n;
+                const pctDisplay =
+                  pctDrafts[b.bpsKey] !== undefined ? pctDrafts[b.bpsKey]! : bpsToPctFieldString(bps);
+                return (
+                  <div key={b.enKey} className="app-split-alloc-item">
+                    <div className="app-split-alloc-item-top">
+                      <span className="app-split-alloc-label">{b.label}</span>
+                      <label className="app-split-switch">
+                        <input
+                          type="checkbox"
+                          checked={enabled}
+                          onChange={(e) => setEnabled(b.enKey, b.bpsKey, e.target.checked)}
+                        />
+                        <span className="app-split-switch-ui" aria-hidden />
+                      </label>
+                    </div>
+                    {enabled && (
+                      <div className="app-split-alloc-item-body">
+                        {b.bpsKey === "vesu_yield_bps" && (
+                          <p
+                            className="app-split-vesu-apy"
+                            title="From Vesu market stats (same lending protocol StarkZap exposes as wallet.lending() on Starknet)."
+                          >
+                            Vesu STRK supply APY:{" "}
+                            <span className="font-mono">
+                              {vesuStrkSupplyApy != null && Number.isFinite(vesuStrkSupplyApy)
+                                ? `${(vesuStrkSupplyApy * 100).toFixed(2)}%`
+                                : "—"}
+                            </span>
+                          </p>
+                        )}
+                        <label className="app-split-pct-field">
+                          <span className="app-split-pct-field-label">Share %</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            className="app-split-pct-input-wide font-mono"
+                            autoComplete="off"
+                            value={pctDisplay}
+                            onChange={(e) =>
+                              setPctDrafts((d) => ({ ...d, [b.bpsKey]: e.target.value }))
+                            }
+                            onBlur={() => {
+                              const key = b.bpsKey;
+                              const draft = pctDrafts[key];
+                              const raw = (draft !== undefined ? draft : bpsToPctFieldString(bps)).trim();
+                              setPctDrafts((d) => {
+                                const next = { ...d };
+                                delete next[key];
+                                return next;
+                              });
+                              if (raw === "") {
+                                setBps(key, 0);
+                                return;
+                              }
+                              const v = Number(raw);
+                              if (Number.isFinite(v)) {
+                                setBps(key, Math.round(Math.min(100, Math.max(0, v)) * 100));
+                              }
+                            }}
+                          />
+                        </label>
+                        <p className="app-split-strk-slice font-mono">
+                          ≈ {formatTokenAmount(slice, 18, 5)} STRK
+                        </p>
+                        {b.forwarding && (
+                          <input
+                            type="text"
+                            className="app-split-fwd-input font-mono"
+                            placeholder="Forward to 0x…"
+                            value={config.cold_wallet_address}
+                            onChange={(e) => setConfig((c) => ({ ...c, cold_wallet_address: e.target.value }))}
+                            autoComplete="off"
+                            spellCheck={false}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <p
+              className={`app-split-sum ${sumOk && !validationMsg ? "app-split-sum--ok" : "app-split-sum--bad"}`}
+            >
+              Enabled total {(sumBps / 100).toFixed(2)}%{sumOk && !validationMsg ? "" : " — need 100%"}
+            </p>
+            {showAllocExtraError && <p className="app-split-alloc-err">{validationMsg}</p>}
+            <div className="app-split-actions">
+              <button
+                type="button"
+                className="app-split-save app-connect-cta font-display"
+                onClick={() => void save()}
+                disabled={!canSave}
+              >
+                {saving ? "Saving…" : "Save plan"}
+              </button>
+              <button
+                type="button"
+                className="app-split-secondary"
+                onClick={() => {
+                  setConfig(DEFAULT_SPLIT_CONFIG);
+                  setThresholdDraft(String(DEFAULT_SPLIT_CONFIG.threshold_strk));
+                  setPctDrafts({});
+                  setSaveErr(null);
+                  setSaveOk(null);
+                }}
+              >
+                Reset defaults
+              </button>
+              <button
+                type="button"
+                className="app-split-secondary"
+                onClick={() => {
+                  setIsEditing(false);
+                  setThresholdDraft(String(config.threshold_strk));
+                  setPctDrafts({});
+                }}
+              >
+                Done
+              </button>
+            </div>
+            {saveErr && <p className="app-split-banner app-split-banner--warn">{saveErr}</p>}
+            {saveOk && <p className="app-split-banner app-split-banner--ok">{saveOk}</p>}
+          </>
+        )}
       </section>
     </div>
   );
