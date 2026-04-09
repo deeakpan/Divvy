@@ -3,8 +3,10 @@ import {
   divvyRpcCall,
   marketIdCalldata,
   splitU256,
+  starknetContractCall,
   u256From,
 } from "@/app/lib/divvyRpc";
+import { getCollateralTokenAddress } from "@/app/lib/trading";
 
 type PreviewBuyBody = {
   op: "preview_buy";
@@ -26,15 +28,20 @@ type UserBalancesBody = {
   user: string;
 };
 
-type Body = PreviewBuyBody | PreviewSellBody | UserBalancesBody;
+type Erc20BalanceBody = {
+  op: "erc20_balance";
+  user: string;
+};
+
+type Body = PreviewBuyBody | PreviewSellBody | UserBalancesBody | Erc20BalanceBody;
 
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Body;
-    const id = marketIdCalldata(String(body.marketId));
     const yes = (b: boolean) => (b ? "0x1" : "0x0");
 
     if (body.op === "preview_buy") {
+      const id = marketIdCalldata(String(body.marketId));
       const raw = BigInt(body.usdcRaw || "0");
       const [lo, hi] = splitU256(raw);
       const r = await divvyRpcCall("preview_buy", [id, yes(body.outcomeYes), lo, hi]);
@@ -43,6 +50,7 @@ export async function POST(req: Request) {
     }
 
     if (body.op === "preview_sell") {
+      const id = marketIdCalldata(String(body.marketId));
       const raw = BigInt(body.tokensRaw || "0");
       const [lo, hi] = splitU256(raw);
       const r = await divvyRpcCall("preview_sell", [id, yes(body.outcomeYes), lo, hi]);
@@ -51,6 +59,7 @@ export async function POST(req: Request) {
     }
 
     if (body.op === "user_balances") {
+      const id = marketIdCalldata(String(body.marketId));
       const user = String(body.user || "").trim();
       if (!user.startsWith("0x")) {
         return NextResponse.json({ ok: false as const, error: "bad user" }, { status: 400 });
@@ -63,6 +72,17 @@ export async function POST(req: Request) {
         yesRaw: yesBal.toString(),
         noRaw: noBal.toString(),
       });
+    }
+
+    if (body.op === "erc20_balance") {
+      const user = String(body.user || "").trim();
+      if (!user.startsWith("0x")) {
+        return NextResponse.json({ ok: false as const, error: "bad user" }, { status: 400 });
+      }
+      const token = getCollateralTokenAddress();
+      const r = await starknetContractCall(token, "balance_of", [user]);
+      const bal = u256From(r, 0);
+      return NextResponse.json({ ok: true as const, balanceRaw: bal.toString() });
     }
 
     return NextResponse.json({ ok: false as const, error: "unknown op" }, { status: 400 });

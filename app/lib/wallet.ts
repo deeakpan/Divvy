@@ -42,6 +42,8 @@ export async function connectCartridge(): Promise<ConnectedWallet> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- starkzap ChainId; avoid importing starkzap barrel in client
     chainId: CARTRIDGE_CHAIN_STARKZAP as any,
     policies: getCartridgeStarkzapPolicies(),
+    /** Policy-matched invokes use Cartridge paymaster when eligible (gasless-style on testnet). */
+    feeMode: "sponsored",
   });
   return { address: wallet.address, wallet, method: "cartridge" };
 }

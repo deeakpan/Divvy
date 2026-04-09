@@ -6,6 +6,7 @@ import { useWallet } from "../components/WalletContext";
 import { WalletConnectOptions } from "../components/WalletConnectOptions";
 import { MarketTradePanel } from "../components/MarketTradePanel";
 import { RPC_URL } from "../lib/constants";
+import { executeMarketBuyQuick, formatMarketTradeError, sendWalletCalls } from "../lib/marketTradeExecute";
 import { faucetMintHint, getCollateralTokenAddress, parseCollateralToRaw } from "../lib/trading";
 
 type Market = {
@@ -127,13 +128,14 @@ function CornerArc({ pct, color }: { pct: number; color: string }) {
 // ── Market card ───────────────────────────────────────────────────────────────
 
 function MarketCard({
-  market, showButtons, onVote, style, onTouchStart, onTouchMove, onTouchEnd,
+  market, showButtons, onVote, style, onTouchStart, onTouchMove, onTouchEnd, buttonsDisabled,
 }: {
   market: Market; showButtons: boolean; onVote: (yes: boolean) => void;
   style?: React.CSSProperties;
   onTouchStart?: React.TouchEventHandler;
   onTouchMove?: React.TouchEventHandler;
   onTouchEnd?: React.TouchEventHandler;
+  buttonsDisabled?: boolean;
 }) {
   const total = (market.yes_pool ?? 0) + (market.no_pool ?? 0);
   const yesPct = total > 0 ? Math.round((market.yes_pool / total) * 100) : 50;
@@ -225,35 +227,57 @@ function MarketCard({
 
         {/* Buttons */}
         {showButtons && (
-          <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={() => onVote(true)} style={{
-              flex: 1, padding: "13px 8px", borderRadius: 14,
-              border: "1px solid rgba(34,197,94,0.4)",
-              background: "rgba(220,252,231,0.8)",
-              color: "#15803d", fontWeight: 800, fontSize: 15,
-              letterSpacing: "0.06em", cursor: "pointer",
-              transition: "background 0.15s, box-shadow 0.15s",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              boxShadow: "0 2px 8px rgba(34,197,94,0.12)",
-            }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(187,247,208,0.95)"; e.currentTarget.style.boxShadow = "0 4px 14px rgba(34,197,94,0.22)"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(220,252,231,0.8)"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(34,197,94,0.12)"; }}
+          <div style={{ display: "flex", gap: 10, opacity: buttonsDisabled ? 0.5 : 1 }}>
+            <button
+              type="button"
+              disabled={buttonsDisabled}
+              onClick={() => onVote(true)}
+              style={{
+                flex: 1, padding: "13px 8px", borderRadius: 14,
+                border: "1px solid rgba(34,197,94,0.4)",
+                background: "rgba(220,252,231,0.8)",
+                color: "#15803d", fontWeight: 800, fontSize: 15,
+                letterSpacing: "0.06em", cursor: buttonsDisabled ? "default" : "pointer",
+                transition: "background 0.15s, box-shadow 0.15s",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                boxShadow: "0 2px 8px rgba(34,197,94,0.12)",
+              }}
+              onMouseEnter={e => {
+                if (buttonsDisabled) return;
+                e.currentTarget.style.background = "rgba(187,247,208,0.95)";
+                e.currentTarget.style.boxShadow = "0 4px 14px rgba(34,197,94,0.22)";
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = "rgba(220,252,231,0.8)";
+                e.currentTarget.style.boxShadow = "0 2px 8px rgba(34,197,94,0.12)";
+              }}
             >
               YES
               <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.75, fontFamily: "var(--font-geist-mono)" }}>{yesPct}%</span>
             </button>
-            <button onClick={() => onVote(false)} style={{
-              flex: 1, padding: "13px 8px", borderRadius: 14,
-              border: "1px solid rgba(239,68,68,0.3)",
-              background: "rgba(254,226,226,0.7)",
-              color: "#dc2626", fontWeight: 800, fontSize: 15,
-              letterSpacing: "0.06em", cursor: "pointer",
-              transition: "background 0.15s, box-shadow 0.15s",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              boxShadow: "0 2px 8px rgba(239,68,68,0.1)",
-            }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(254,202,202,0.9)"; e.currentTarget.style.boxShadow = "0 4px 14px rgba(239,68,68,0.18)"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(254,226,226,0.7)"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(239,68,68,0.1)"; }}
+            <button
+              type="button"
+              disabled={buttonsDisabled}
+              onClick={() => onVote(false)}
+              style={{
+                flex: 1, padding: "13px 8px", borderRadius: 14,
+                border: "1px solid rgba(239,68,68,0.3)",
+                background: "rgba(254,226,226,0.7)",
+                color: "#dc2626", fontWeight: 800, fontSize: 15,
+                letterSpacing: "0.06em", cursor: buttonsDisabled ? "default" : "pointer",
+                transition: "background 0.15s, box-shadow 0.15s",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                boxShadow: "0 2px 8px rgba(239,68,68,0.1)",
+              }}
+              onMouseEnter={e => {
+                if (buttonsDisabled) return;
+                e.currentTarget.style.background = "rgba(254,202,202,0.9)";
+                e.currentTarget.style.boxShadow = "0 4px 14px rgba(239,68,68,0.18)";
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = "rgba(254,226,226,0.7)";
+                e.currentTarget.style.boxShadow = "0 2px 8px rgba(239,68,68,0.1)";
+              }}
             >
               NO
               <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.75, fontFamily: "var(--font-geist-mono)" }}>{noPct}%</span>
@@ -267,7 +291,15 @@ function MarketCard({
 
 // ── Swipeable wrapper (mobile) ────────────────────────────────────────────────
 
-function SwipeCard({ market, onVote }: { market: Market; onVote: (yes: boolean) => void }) {
+function SwipeCard({
+  market,
+  onVote,
+  interactionDisabled,
+}: {
+  market: Market;
+  onVote: (yes: boolean) => void;
+  interactionDisabled?: boolean;
+}) {
   const [offset, setOffset] = useState(0);
   const startX = useRef(0);
   const dragging = useRef(false);
@@ -277,7 +309,16 @@ function SwipeCard({ market, onVote }: { market: Market; onVote: (yes: boolean) 
   const noOpacity  = Math.min(1, Math.max(0, -offset / THRESHOLD));
 
   return (
-    <div style={{ position: "relative", width: "100%", touchAction: "pan-y" }}>
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        touchAction: interactionDisabled ? "auto" : "pan-y",
+        opacity: interactionDisabled ? 0.55 : 1,
+        pointerEvents: interactionDisabled ? "none" : "auto",
+        transition: "opacity 0.2s ease",
+      }}
+    >
       {/* hint labels */}
       <div style={{ position: "absolute", left: 20, top: "50%", transform: "translateY(-50%)", opacity: yesOpacity, pointerEvents: "none", zIndex: 2 }}>
         <span style={{ color: "#15803d", fontWeight: 800, fontSize: 20, letterSpacing: 3 }}>YES →</span>
@@ -338,6 +379,118 @@ function useDefaultTradeAmount(): [string, (v: string) => void] {
   return [amount, setAmount];
 }
 
+const QUICK_TRADE_KEY = "divvy_quick_trade_swipe";
+
+function useQuickTradeSwipe(): [boolean, (v: boolean) => void] {
+  const [on, setOnState] = useState(false);
+
+  useEffect(() => {
+    try {
+      setOnState(localStorage.getItem(QUICK_TRADE_KEY) === "1");
+    } catch {
+      setOnState(false);
+    }
+  }, []);
+
+  const setOn = useCallback((v: boolean) => {
+    setOnState(v);
+    try {
+      localStorage.setItem(QUICK_TRADE_KEY, v ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  return [on, setOn];
+}
+
+const SWIPE_COACH_KEY = "divvy_swipe_coach_seen_v1";
+
+function SwipeDirectionCoach({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 40,
+        pointerEvents: "none",
+        display: "flex",
+        alignItems: "flex-end",
+        justifyContent: "center",
+        padding: "0 20px 112px",
+      }}
+    >
+      <style>{`
+        @keyframes divvyCoachLeft {
+          0%, 100% { transform: translateX(0); opacity: 0.35; }
+          50% { transform: translateX(-14px); opacity: 1; }
+        }
+        @keyframes divvyCoachRight {
+          0%, 100% { transform: translateX(0); opacity: 0.35; }
+          50% { transform: translateX(14px); opacity: 1; }
+        }
+      `}</style>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 18,
+          padding: "14px 22px",
+          borderRadius: 18,
+          border: "1px solid rgba(186,230,253,0.85)",
+          background: "rgba(255,255,255,0.42)",
+          backdropFilter: "blur(14px)",
+          WebkitBackdropFilter: "blur(14px)",
+          boxShadow: "0 16px 48px rgba(96,165,250,0.22)",
+          maxWidth: 340,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 26,
+            fontWeight: 800,
+            color: "#dc2626",
+            animation: "divvyCoachLeft 0.85s ease-in-out infinite",
+            fontFamily: "var(--font-geist-mono)",
+            lineHeight: 1,
+          }}
+        >
+          ‹‹
+        </span>
+        <p
+          style={{
+            margin: 0,
+            fontSize: 12,
+            fontWeight: 700,
+            color: "#1e3a8a",
+            fontFamily: "var(--font-geist-mono)",
+            lineHeight: 1.45,
+            textAlign: "center",
+            flex: 1,
+          }}
+        >
+          Swipe left — NO
+          <br />
+          <span style={{ opacity: 0.75, fontWeight: 600 }}>Swipe right — YES</span>
+        </p>
+        <span
+          style={{
+            fontSize: 26,
+            fontWeight: 800,
+            color: "#16a34a",
+            animation: "divvyCoachRight 0.85s ease-in-out infinite",
+            fontFamily: "var(--font-geist-mono)",
+            lineHeight: 1,
+          }}
+        >
+          ››
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ── Header ────────────────────────────────────────────────────────────────────
 
 const COLLATERAL_USDC = getCollateralTokenAddress();
@@ -371,11 +524,15 @@ function Header({
   onConnect,
   tradeAmount,
   setTradeAmount,
+  quickTradeEnabled,
+  setQuickTradeEnabled,
 }: {
   onBack: () => void;
   onConnect: () => void;
   tradeAmount: string;
   setTradeAmount: (v: string) => void;
+  quickTradeEnabled: boolean;
+  setQuickTradeEnabled: (v: boolean) => void;
 }) {
   const { address, wallet, method, disconnect, connecting } = useWallet();
   const isMobile = useIsMobile();
@@ -459,17 +616,14 @@ function Header({
       calldata: [address, low, high],
     };
     try {
-      if (method === "cartridge") {
-        const cw = wallet as { execute: (c: Array<{ contractAddress: string; entrypoint: string; calldata: string[] }>) => Promise<{ hash: string }> };
-        await cw.execute([call]);
+      const tx = await sendWalletCalls(wallet, method, RPC_URL, address, [call]);
+      if (tx.switchedToUserPaysThisSession) {
+        setFaucetMsg(
+          `Mint submitted (${faucetAmount} USDC). Cartridge sponsorship unavailable for this account/session; switched to user-paid gas (STRK) for the rest of this session.`,
+        );
       } else {
-        const { WalletAccount, RpcProvider: Provider } = await import("starknet");
-        const provider = new Provider({ nodeUrl: RPC_URL });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const account = new WalletAccount({ provider, walletProvider: wallet as any, address });
-        await account.execute([call]);
+        setFaucetMsg(`Successfully minted ${faucetAmount} USDC.`);
       }
-      setFaucetMsg(`Successfully minted ${faucetAmount} USDC.`);
     } catch (e) {
       setFaucetMsg(e instanceof Error ? e.message : "Mint failed.");
     } finally {
@@ -815,8 +969,70 @@ function Header({
                   </span>
                 </div>
 
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  padding: "12px 0",
+                  borderBottom: "1px solid rgba(186,230,253,0.4)",
+                }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 12, color: "#475569", fontWeight: 600 }}>Quick trade</p>
+                    <p style={{ margin: "4px 0 0", fontSize: 10, color: "#94a3b8", lineHeight: 1.45 }}>
+                      Swipe or tap YES/NO → submit default size without opening the sheet.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={quickTradeEnabled}
+                    aria-label="Toggle quick trade"
+                    onClick={() => setQuickTradeEnabled(!quickTradeEnabled)}
+                    style={{
+                      width: 46,
+                      height: 26,
+                      borderRadius: 13,
+                      border: "none",
+                      cursor: "pointer",
+                      flexShrink: 0,
+                      background: quickTradeEnabled ? "#2563eb" : "rgba(226,232,240,0.95)",
+                      position: "relative",
+                      transition: "background 0.2s ease",
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: 3,
+                        left: quickTradeEnabled ? 23 : 3,
+                        width: 20,
+                        height: 20,
+                        borderRadius: "50%",
+                        background: "#fff",
+                        boxShadow: "0 1px 4px rgba(15,23,42,0.18)",
+                        transition: "left 0.2s ease",
+                      }}
+                    />
+                  </button>
+                </div>
+
                 <p style={{ margin: "10px 0 0", fontSize: 10, color: "#94a3b8", fontFamily: "var(--font-geist-mono)", lineHeight: 1.5 }}>
-                  This amount is used when you swipe on a market.
+                  {quickTradeEnabled
+                    ? "Quick trade uses the default USDC above for each YES/NO (mobile swipe or desktop buttons)."
+                    : "Default USDC is prefilled when you open the trade sheet."}
+                </p>
+
+                <p style={{ margin: "12px 0 0", fontSize: 10, color: "#64748b", fontFamily: "var(--font-geist-mono)", lineHeight: 1.55 }}>
+                  <span style={{ fontWeight: 700, color: "#475569" }}>Gas &amp; sessions.</span>{" "}
+                  <strong>Cartridge:</strong> you approve policies once at connect. Matching calls (USDC{" "}
+                  <code style={{ fontSize: 9 }}>approve</code> + FPMM <code style={{ fontSize: 9 }}>buy</code>/
+                  <code style={{ fontSize: 9 }}>sell</code>) go through a session; when Cartridge&apos;s paymaster
+                  accepts them, network fees are sponsored (common on Sepolia). If sponsorship fails, the app retries
+                  with you paying fees in STRK from your account balance.
+                  {" "}
+                  <strong>Argent / Braavos:</strong> each quick trade is still one wallet confirmation; fees are paid
+                  in STRK by you — there is no Cartridge session, only batched contract calls.
                 </p>
               </div>
             )}
@@ -1036,6 +1252,9 @@ export default function AppPage() {
   const [connectOpen, setConnectOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("markets");
   const [tradeAmount, setTradeAmount] = useDefaultTradeAmount();
+  const [quickTradeEnabled, setQuickTradeEnabled] = useQuickTradeSwipe();
+  const [quickTradePending, setQuickTradePending] = useState(false);
+  const [showSwipeCoach, setShowSwipeCoach] = useState(false);
   const [tradeOpen, setTradeOpen] = useState(false);
   const [tradeMarket, setTradeMarket] = useState<Market | null>(null);
   const [tradeInitialYes, setTradeInitialYes] = useState(true);
@@ -1062,16 +1281,74 @@ export default function AppPage() {
     void refreshMarkets(true);
   }, [refreshMarkets]);
 
-  const handleVote = (market: Market, yes: boolean) => {
-    if (!address || !wallet || !method) {
-      setConnectOpen(true);
+  useEffect(() => {
+    if (!isMobile || activeTab !== "markets") return;
+    if (typeof window === "undefined") return;
+    try {
+      if (localStorage.getItem(SWIPE_COACH_KEY)) return;
+    } catch {
       return;
     }
-    setTradeMarket(market);
-    setTradeInitialYes(yes);
-    setTradeMsg(null);
-    setTradeOpen(true);
-  };
+    if (!markets.length) return;
+    setShowSwipeCoach(true);
+    const t = window.setTimeout(() => {
+      setShowSwipeCoach(false);
+      try {
+        localStorage.setItem(SWIPE_COACH_KEY, "1");
+      } catch {
+        /* ignore */
+      }
+    }, 2200);
+    return () => window.clearTimeout(t);
+  }, [isMobile, activeTab, markets.length]);
+
+  const handleVote = useCallback(
+    async (market: Market, yes: boolean) => {
+      if (!address || !wallet || !method) {
+        setConnectOpen(true);
+        return;
+      }
+      const expired = Date.now() >= new Date(market.expiry_at).getTime();
+      if (expired) {
+        setTradeMsg("This market has expired.");
+        return;
+      }
+
+      if (quickTradeEnabled) {
+        setQuickTradePending(true);
+        setTradeMsg(null);
+        try {
+          const tx = await executeMarketBuyQuick({
+            marketId: market.id,
+            outcomeYes: yes,
+            amountStr: tradeAmount,
+            slippageBps: 100,
+            wallet,
+            method,
+            rpcUrl: RPC_URL,
+            address,
+          });
+          if (tx.switchedToUserPaysThisSession) {
+            setTradeMsg("Cartridge sponsorship unavailable for this account/session; switched to user-paid gas (STRK) for the rest of this session.");
+          } else {
+            setTradeMsg(`Quick buy submitted — ${tx.transactionHash.slice(0, 14)}…`);
+          }
+          void refreshMarkets(false);
+        } catch (e) {
+          setTradeMsg(formatMarketTradeError(e));
+        } finally {
+          setQuickTradePending(false);
+        }
+        return;
+      }
+
+      setTradeMarket(market);
+      setTradeInitialYes(yes);
+      setTradeMsg(null);
+      setTradeOpen(true);
+    },
+    [address, wallet, method, quickTradeEnabled, tradeAmount, refreshMarkets],
+  );
 
   return (
     <div style={{
@@ -1084,12 +1361,16 @@ export default function AppPage() {
 
       <BottomNav active={activeTab} onChange={setActiveTab} />
 
+      <SwipeDirectionCoach visible={showSwipeCoach && activeTab === "markets" && isMobile} />
+
       <div style={{ position: "relative", zIndex: 1, padding: "16px 16px 100px" }}>
         <Header
           onBack={() => router.push("/")}
           onConnect={() => setConnectOpen(true)}
           tradeAmount={tradeAmount}
           setTradeAmount={setTradeAmount}
+          quickTradeEnabled={quickTradeEnabled}
+          setQuickTradeEnabled={setQuickTradeEnabled}
         />
 
         {tradeMsg && (
@@ -1191,9 +1472,20 @@ export default function AppPage() {
           )}
 
           {markets.map(m => isMobile ? (
-            <SwipeCard key={m.id} market={m} onVote={yes => handleVote(m, yes)} />
+            <SwipeCard
+              key={m.id}
+              market={m}
+              onVote={yes => void handleVote(m, yes)}
+              interactionDisabled={quickTradePending}
+            />
           ) : (
-            <MarketCard key={m.id} market={m} showButtons onVote={yes => handleVote(m, yes)} />
+            <MarketCard
+              key={m.id}
+              market={m}
+              showButtons
+              onVote={yes => void handleVote(m, yes)}
+              buttonsDisabled={quickTradePending}
+            />
           ))}
 
           {!loading && markets.length > 0 && isMobile && (

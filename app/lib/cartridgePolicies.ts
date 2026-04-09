@@ -1,4 +1,5 @@
 import { SEPOLIA_WALLET_ERC20 } from "./constants";
+import { getCollateralTokenAddress, getDivvyFpmmAddress } from "./trading";
 
 /** Normalize contract address for Cartridge policy `target` fields. */
 function norm(addr: string): string {
@@ -26,11 +27,18 @@ export const STAKING_POOL_STRK_SEPOLIA =
 export function getCartridgeStarkzapPolicies(): { target: string; method: string }[] {
   const strk = norm(SEPOLIA_WALLET_ERC20.STRK.address);
   const pool = norm(STAKING_POOL_STRK_SEPOLIA);
+  const usdc = norm(getCollateralTokenAddress());
+  const fpmm = norm(getDivvyFpmmAddress());
 
   return [
     { target: strk, method: "approve" },
     { target: strk, method: "transfer" },
     { target: pool, method: "enter_delegation_pool" },
     { target: pool, method: "add_to_delegation_pool" },
+    /* Divvy FPMM trading (session must allow these or approve/buy does nothing useful) */
+    { target: usdc, method: "mint" },
+    { target: usdc, method: "approve" },
+    { target: fpmm, method: "buy" },
+    { target: fpmm, method: "sell" },
   ];
 }

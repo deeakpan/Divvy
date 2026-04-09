@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { buildFpmmBuyCalls, sendWalletCalls } from "@/app/lib/marketTradeExecute";
 import {
   formatCollateralRaw,
-  getCollateralTokenAddress,
   getDivvyFpmmAddress,
   mulBpsDown,
   parseCollateralToRaw,
@@ -17,6 +17,22 @@ export type MarketTradePanelMarket = {
 };
 
 const SLIPPAGE_OPTIONS = [50, 100, 200] as const;
+
+function formatTxError(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
+
+function fmtRatio(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "—";
+  if (n >= 1000) return n.toFixed(2);
+  if (n >= 1) return n.toFixed(4);
+  return n.toFixed(6);
+}
 
 async function readDivvy(body: object) {
   const res = await fetch("/api/divvy-read", {
@@ -68,6 +84,9 @@ export function MarketTradePanel({
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [yesBal, setYesBal] = useState<bigint>(0n);
   const [noBal, setNoBal] = useState<bigint>(0n);
+  const [usdcBal, setUsdcBal] = useState<bigint>(0n);
+  const [usdcBalLoading, setUsdcBalLoading] = useState(false);
+  const [panelError, setPanelError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -80,10 +99,26 @@ export function MarketTradePanel({
     setAmountStr(defaultAmount.trim() || "");
     setQuoteOut(null);
     setSlippageBps(100);
+    setPanelError(null);
   }, [open, market?.id, initialOutcomeYes, defaultAmount, market]);
 
   const refreshBalances = useCallback(async () => {
-    if (!open || !market || !address) {
+    if (!open || !address) {
+      setYesBal(0n);
+      setNoBal(0n);
+      setUsdcBal(0n);
+      return;
+    }
+    setUsdcBalLoading(true);
+    try {
+      const uj = await readDivvy({ op: "erc20_balance", user: address });
+      setUsdcBal(BigInt((uj as { balanceRaw?: string }).balanceRaw || "0"));
+    } catch {
+      setUsdcBal(0n);
+    } finally {
+      setUsdcBalLoading(false);
+    }
+    if (!market) {
       setYesBal(0n);
       setNoBal(0n);
       return;
@@ -105,6 +140,10 @@ export function MarketTradePanel({
   useEffect(() => {
     void refreshBalances();
   }, [refreshBalances]);
+
+  useEffect(() => {
+    setPanelError(null);
+  }, [mode, outcomeYes]);
 
   useEffect(() => {
     if (!open || !market) return;
@@ -172,7 +211,13 @@ export function MarketTradePanel({
     setAmountStr(formatCollateralRaw(sideBalance, 6));
   };
 
+  const setMaxBuy = () => {
+    if (usdcBal <= 0n) return;
+    setAmountStr(formatCollateralRaw(usdcBal, 6));
+  };
+
   const execute = async () => {
+    setPanelError(null);
     if (!market || expired) return;
     if (!address || !wallet || !method) {
       onNeedConnect();
@@ -183,64 +228,67 @@ export function MarketTradePanel({
     try {
       raw = parseCollateralToRaw(amountStr);
     } catch (e) {
-      onNotify(e instanceof Error ? e.message : "Invalid amount.");
+      const m = e instanceof Error ? e.message : "Invalid amount.";
+      setPanelError(m);
+      onNotify(m);
       return;
     }
     if (raw <= 0n) {
-      onNotify("Enter an amount greater than zero.");
+      const m = "Enter an amount greater than zero.";
+      setPanelError(m);
+      onNotify(m);
+      return;
+    }
+
+    if (mode === "buy" && raw > usdcBal) {
+      const m = `Insufficient USDC — wallet has ${formatCollateralRaw(usdcBal)} USDC.`;
+      setPanelError(m);
+      onNotify(m);
       return;
     }
 
     if (mode === "sell") {
       if (raw > sideBalance!) {
-        onNotify("Amount exceeds your position balance.");
+        const m = "Amount exceeds your position balance.";
+        setPanelError(m);
+        onNotify(m);
         return;
       }
     }
 
     const fpmm = getDivvyFpmmAddress();
-    const usdc = getCollateralTokenAddress();
     const idFelt = `0x${BigInt(market.id).toString(16)}`;
     const yesFelt = outcomeYes ? "0x1" : "0x0";
 
     if (quoteOut === null || quoteOut <= 0n) {
-      onNotify("No valid quote — check amount and try again.");
+      const m = "No valid quote yet — wait a moment or adjust the amount.";
+      setPanelError(m);
+      onNotify(m);
+      return;
+    }
+
+    if (quoteLoading) {
+      const m = "Quote is updating — try again in a second.";
+      setPanelError(m);
+      onNotify(m);
       return;
     }
 
     const minOut = mulBpsDown(quoteOut, slippageBps);
-    const [minL, minH] = splitU256(minOut);
 
     setBusy(true);
 
     try {
       if (mode === "buy") {
-        const [inL, inH] = splitU256(raw);
-        const calls = [
-          { contractAddress: usdc, entrypoint: "approve", calldata: [fpmm, inL, inH] },
-          {
-            contractAddress: fpmm,
-            entrypoint: "buy",
-            calldata: [idFelt, yesFelt, inL, inH, minL, minH],
-          },
-        ];
-
-        if (method === "cartridge") {
-          const cw = wallet as {
-            execute: (c: Array<{ contractAddress: string; entrypoint: string; calldata: string[] }>) => Promise<{ hash: string }>;
-          };
-          await cw.execute(calls);
-        } else {
-          const { WalletAccount, RpcProvider: Provider } = await import("starknet");
-          const provider = new Provider({ nodeUrl: rpcUrl });
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const account = new WalletAccount({ provider, walletProvider: wallet as any, address });
-          await account.execute(calls);
+        const calls = buildFpmmBuyCalls(market.id, outcomeYes, raw, minOut);
+        const tx = await sendWalletCalls(wallet, method, rpcUrl, address, calls);
+        if (tx.switchedToUserPaysThisSession) {
+          onNotify("Cartridge sponsorship unavailable for this account/session; switched to user-paid gas (STRK) for the rest of this session.");
         }
-
         onNotify(`Buy submitted (~${formatCollateralRaw(quoteOut)} tokens for ${amountStr} USDC).`);
       } else {
         const [inL, inH] = splitU256(raw);
+        const [minL, minH] = splitU256(minOut);
         const calls = [
           {
             contractAddress: fpmm,
@@ -248,20 +296,10 @@ export function MarketTradePanel({
             calldata: [idFelt, yesFelt, inL, inH, minL, minH],
           },
         ];
-
-        if (method === "cartridge") {
-          const cw = wallet as {
-            execute: (c: Array<{ contractAddress: string; entrypoint: string; calldata: string[] }>) => Promise<{ hash: string }>;
-          };
-          await cw.execute(calls);
-        } else {
-          const { WalletAccount, RpcProvider: Provider } = await import("starknet");
-          const provider = new Provider({ nodeUrl: rpcUrl });
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const account = new WalletAccount({ provider, walletProvider: wallet as any, address });
-          await account.execute(calls);
+        const tx = await sendWalletCalls(wallet, method, rpcUrl, address, calls);
+        if (tx.switchedToUserPaysThisSession) {
+          onNotify("Cartridge sponsorship unavailable for this account/session; switched to user-paid gas (STRK) for the rest of this session.");
         }
-
         onNotify(`Sell submitted (~${formatCollateralRaw(quoteOut)} USDC out).`);
       }
 
@@ -269,13 +307,37 @@ export function MarketTradePanel({
       onMarketsUpdated?.();
       onClose();
     } catch (e) {
-      onNotify(e instanceof Error ? e.message : "Transaction failed.");
+      const m = formatTxError(e);
+      setPanelError(m);
+      onNotify(m);
     } finally {
       setBusy(false);
     }
   };
 
   if (!open || !market) return null;
+
+  let parsedAmountRaw = 0n;
+  const trimmedAmt = amountStr.trim();
+  if (trimmedAmt) {
+    try {
+      parsedAmountRaw = parseCollateralToRaw(trimmedAmt);
+    } catch {
+      parsedAmountRaw = 0n;
+    }
+  }
+
+  const quoteOk = quoteOut !== null && quoteOut > 0n && !quoteLoading;
+  const usdcPerOutcomeBuy =
+    mode === "buy" && quoteOk && parsedAmountRaw > 0n
+      ? Number(parsedAmountRaw) / Number(quoteOut)
+      : null;
+  const usdcPerOutcomeSell =
+    mode === "sell" && quoteOk && parsedAmountRaw > 0n
+      ? Number(quoteOut) / Number(parsedAmountRaw)
+      : null;
+
+  const canSubmit = !busy && !expired && quoteOk && parsedAmountRaw > 0n;
 
   const shell = (
     <>
@@ -357,6 +419,39 @@ export function MarketTradePanel({
           <p style={{ margin: 0, fontSize: 11, color: "#dc2626", fontWeight: 600 }}>
             This market has expired — trading is closed.
           </p>
+        )}
+
+        {address ? (
+          <div
+            style={{
+              padding: "10px 12px",
+              borderRadius: 12,
+              background: "rgba(248,250,252,0.95)",
+              border: "1px solid rgba(226,232,240,0.95)",
+              fontSize: 11,
+              color: "#475569",
+              fontFamily: "var(--font-geist-mono)",
+              lineHeight: 1.5,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <span>
+                <span style={{ color: "#94a3b8", fontWeight: 600 }}>Wallet USDC</span>{" "}
+                <strong style={{ color: "#0f2d6b" }}>
+                  {usdcBalLoading ? "…" : formatCollateralRaw(usdcBal)}
+                </strong>
+              </span>
+              {mode === "sell" && (
+                <span style={{ color: "#64748b" }}>
+                  YES <strong style={{ color: "#15803d" }}>{formatCollateralRaw(yesBal)}</strong>
+                  <span style={{ margin: "0 6px", color: "#cbd5e1" }}>·</span>
+                  NO <strong style={{ color: "#dc2626" }}>{formatCollateralRaw(noBal)}</strong>
+                </span>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p style={{ margin: 0, fontSize: 11, color: "#64748b" }}>Connect a wallet to trade.</p>
         )}
 
         <div
@@ -456,7 +551,10 @@ export function MarketTradePanel({
             placeholder={mode === "buy" ? "USDC amount" : "Token amount"}
             value={amountStr}
             disabled={busy || expired}
-            onChange={(e) => setAmountStr(e.target.value)}
+            onChange={(e) => {
+              setPanelError(null);
+              setAmountStr(e.target.value);
+            }}
             style={{
               flex: 1,
               borderRadius: 10,
@@ -468,6 +566,26 @@ export function MarketTradePanel({
               outline: "none",
             }}
           />
+          {mode === "buy" && (
+            <button
+              type="button"
+              disabled={busy || expired || usdcBal <= 0n}
+              onClick={setMaxBuy}
+              style={{
+                border: "1px solid rgba(37,99,235,0.35)",
+                borderRadius: 10,
+                padding: "8px 12px",
+                fontSize: 11,
+                fontWeight: 700,
+                color: "#2563eb",
+                background: "rgba(239,246,255,0.9)",
+                cursor: busy || expired || usdcBal <= 0n ? "default" : "pointer",
+                fontFamily: "var(--font-geist-mono)",
+              }}
+            >
+              MAX
+            </button>
+          )}
           {mode === "sell" && (
             <button
               type="button"
@@ -517,36 +635,102 @@ export function MarketTradePanel({
 
         <div
           style={{
-            padding: "10px 12px",
+            padding: "12px 12px",
             borderRadius: 12,
             background: "rgba(239,246,255,0.65)",
             border: "1px solid rgba(186,230,253,0.6)",
             fontSize: 11,
             color: "#334155",
             fontFamily: "var(--font-geist-mono)",
-            lineHeight: 1.45,
+            lineHeight: 1.55,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
           }}
         >
           {quoteLoading && <span style={{ color: "#64748b" }}>Updating quote…</span>}
-          {!quoteLoading && mode === "buy" && quoteOut !== null && quoteOut > 0n && (
-            <span>
-              ≈ <strong>{formatCollateralRaw(quoteOut)}</strong> outcome tokens (min after {slippageBps / 100}% slip:{" "}
-              {formatCollateralRaw(mulBpsDown(quoteOut, slippageBps))})
-            </span>
+          {!quoteLoading && mode === "buy" && quoteOut !== null && quoteOut > 0n && parsedAmountRaw > 0n && (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ color: "#64748b" }}>You pay</span>
+                <strong>{formatCollateralRaw(parsedAmountRaw)} USDC</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ color: "#64748b" }}>You receive (est.)</span>
+                <strong>
+                  {formatCollateralRaw(quoteOut)} {outcomeYes ? "YES" : "NO"} tokens
+                </strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ color: "#64748b" }}>Avg. price</span>
+                <span>
+                  <strong>{fmtRatio(usdcPerOutcomeBuy ?? 0)}</strong> USDC / token
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 10, color: "#64748b" }}>
+                <span>Min. after {slippageBps / 100}% slip</span>
+                <span>{formatCollateralRaw(mulBpsDown(quoteOut, slippageBps))} tokens</span>
+              </div>
+            </>
           )}
-          {!quoteLoading && mode === "sell" && quoteOut !== null && quoteOut > 0n && (
-            <span>
-              ≈ <strong>{formatCollateralRaw(quoteOut)}</strong> USDC (min {formatCollateralRaw(mulBpsDown(quoteOut, slippageBps))})
-            </span>
+          {!quoteLoading && mode === "sell" && quoteOut !== null && quoteOut > 0n && parsedAmountRaw > 0n && (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ color: "#64748b" }}>You sell</span>
+                <strong>
+                  {formatCollateralRaw(parsedAmountRaw)} {outcomeYes ? "YES" : "NO"} tokens
+                </strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ color: "#64748b" }}>You receive (est.)</span>
+                <strong>{formatCollateralRaw(quoteOut)} USDC</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ color: "#64748b" }}>Avg. price</span>
+                <span>
+                  <strong>{fmtRatio(usdcPerOutcomeSell ?? 0)}</strong> USDC / token
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 10, color: "#64748b" }}>
+                <span>Min. USDC after {slippageBps / 100}% slip</span>
+                <span>{formatCollateralRaw(mulBpsDown(quoteOut, slippageBps))}</span>
+              </div>
+            </>
           )}
           {!quoteLoading && (quoteOut === null || quoteOut <= 0n) && !expired && (
             <span style={{ color: "#94a3b8" }}>Enter an amount to preview.</span>
           )}
         </div>
 
+        {panelError && (
+          <p
+            style={{
+              margin: 0,
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "rgba(254,242,242,0.9)",
+              border: "1px solid rgba(252,165,165,0.7)",
+              fontSize: 11,
+              lineHeight: 1.45,
+              color: "#b91c1c",
+              fontFamily: "var(--font-geist-mono)",
+              wordBreak: "break-word",
+            }}
+          >
+            {panelError}
+          </p>
+        )}
+
+        {method === "cartridge" && (
+          <p style={{ margin: 0, fontSize: 10, color: "#94a3b8", lineHeight: 1.45 }}>
+            Policies are agreed at connect (session). After an app update, disconnect and connect once if trades fail.
+            Matching txs try Cartridge paymaster first (often gasless on testnet), then fall back to your STRK balance.
+          </p>
+        )}
+
         <button
           type="button"
-          disabled={busy || expired}
+          disabled={!canSubmit}
           onClick={() => void execute()}
           style={{
             marginTop: 4,
@@ -556,8 +740,8 @@ export function MarketTradePanel({
             fontSize: 13,
             fontWeight: 800,
             color: "#fff",
-            background: busy || expired ? "rgba(37,99,235,0.4)" : "#2563eb",
-            cursor: busy || expired ? "default" : "pointer",
+            background: !canSubmit ? "rgba(37,99,235,0.35)" : "#2563eb",
+            cursor: !canSubmit ? "default" : "pointer",
             letterSpacing: "0.04em",
           }}
         >
