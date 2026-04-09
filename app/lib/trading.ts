@@ -1,7 +1,18 @@
-import { DIVVY_FPMM_ADDRESS, walletBalanceTokenAddress } from "@/app/lib/constants";
+import {
+  APP_CHAIN,
+  DIVVY_FPMM_ADDRESS,
+  SEPOLIA_WALLET_ERC20,
+  TOKENS,
+  walletBalanceTokenAddress,
+} from "@/app/lib/constants";
 
 export const COLLATERAL_DECIMALS = 6;
 const SCALE = 10n ** BigInt(COLLATERAL_DECIMALS);
+
+function normalizeHex(addr: string): string {
+  const t = addr.trim();
+  return t.startsWith("0x") ? t : `0x${t}`;
+}
 
 export function getDivvyFpmmAddress(): string {
   const v = process.env.NEXT_PUBLIC_DIVVY_FPMM?.trim();
@@ -10,8 +21,47 @@ export function getDivvyFpmmAddress(): string {
   return f.startsWith("0x") ? f : `0x${f}`;
 }
 
+/**
+ * ERC-20 used for Divvy FPMM collateral: approve, buy, sell, profile USDC balance, faucet mint.
+ * Must match the `usdc_token` stored on your deployed DivvyFPMM.
+ *
+ * Override (recommended for dev): set in `.env` and restart `next dev` / rebuild:
+ *   NEXT_PUBLIC_DIVVY_USDC=0x...   (wins over everything)
+ * On Sepolia only, if unset:
+ *   NEXT_PUBLIC_MOCK_USDC=0x...     (e.g. mintable test USDC)
+ * Otherwise: canonical USDC for the chain (Sepolia `0x0512feac…`, mainnet `TOKENS.USDC`).
+ */
 export function getCollateralTokenAddress(): string {
+  const divvy = process.env.NEXT_PUBLIC_DIVVY_USDC?.trim();
+  if (divvy && divvy.length > 2) return normalizeHex(divvy);
+
+  if (APP_CHAIN === "sepolia") {
+    const mock = process.env.NEXT_PUBLIC_MOCK_USDC?.trim();
+    if (mock && mock.length > 2) return normalizeHex(mock);
+  }
+
   return walletBalanceTokenAddress("USDC");
+}
+
+/** True when the app is still on default Sepolia canonical USDC (wallet mint usually fails). */
+export function isDefaultSepoliaCanonicalUsdc(): boolean {
+  if (APP_CHAIN !== "sepolia") return false;
+  const a = getCollateralTokenAddress().toLowerCase();
+  return a === SEPOLIA_WALLET_ERC20.USDC.address.toLowerCase();
+}
+
+/** Short hint for faucet UI when open mint is unlikely. */
+export function faucetMintHint(): string | null {
+  if (APP_CHAIN === "mainnet") {
+    const a = getCollateralTokenAddress().toLowerCase();
+    if (a === TOKENS.USDC.address.toLowerCase()) {
+      return "Mainnet USDC cannot be minted from this app.";
+    }
+  }
+  if (isDefaultSepoliaCanonicalUsdc()) {
+    return "This Sepolia USDC is not mintable by your wallet. Set NEXT_PUBLIC_DIVVY_USDC (or NEXT_PUBLIC_MOCK_USDC) to the same mintable token your FPMM uses, restart the dev server, then try again.";
+  }
+  return null;
 }
 
 /** Parse human USDC / pool token amount (6 decimals) to raw u256-compatible bigint. */

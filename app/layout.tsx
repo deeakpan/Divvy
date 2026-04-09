@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, DM_Sans, Space_Mono, Unbounded } from "next/font/google";
 import "./globals.css";
 import "./app-shell.css";
@@ -37,6 +37,12 @@ const brandWord = Unbounded({
 export const metadata: Metadata = {
   title: "Divvy: Split your tokens. Earn everywhere.",
   description: "Deposit STRK or ETH. Divvy splits it automatically across staking, USDC yield, and your cold wallet. All in one transaction on Starknet.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

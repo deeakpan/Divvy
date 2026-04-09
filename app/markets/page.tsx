@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWallet } from "../components/WalletContext";
 import { WalletConnectOptions } from "../components/WalletConnectOptions";
+import { MarketTradePanel } from "../components/MarketTradePanel";
 import { RPC_URL } from "../lib/constants";
+import { faucetMintHint, getCollateralTokenAddress, parseCollateralToRaw } from "../lib/trading";
 
 type Market = {
   id: string;
@@ -338,16 +340,7 @@ function useDefaultTradeAmount(): [string, (v: string) => void] {
 
 // ── Header ────────────────────────────────────────────────────────────────────
 
-const USDC_ADDRESS = "0x0715649d4c493ca350743e43915b88d2e6838b1c78ddc23d6d9385446b9d6844";
-
-function parseUsdcToRaw(input: string): bigint {
-  const s = input.trim();
-  if (!/^\d+(\.\d{0,6})?$/.test(s)) throw new Error("Enter a valid USDC amount (up to 6 decimals).");
-  const [whole, frac = ""] = s.split(".");
-  const w = BigInt(whole || "0");
-  const f = BigInt((frac + "000000").slice(0, 6));
-  return w * 1_000_000n + f;
-}
+const COLLATERAL_USDC = getCollateralTokenAddress();
 
 function useUSDCBalance(address: string | null) {
   const [balance, setBalance] = useState<string | null>(null);
@@ -355,7 +348,7 @@ function useUSDCBalance(address: string | null) {
     if (!address) { setBalance(null); return; }
     let cancelled = false;
     const poll = () => {
-      const qs = new URLSearchParams({ token: USDC_ADDRESS, account: address });
+      const qs = new URLSearchParams({ token: COLLATERAL_USDC, account: address });
       fetch(`/api/balance?${qs}`, { cache: "no-store" })
         .then(r => r.json())
         .then((d: { low?: string; high?: string }) => {
@@ -395,6 +388,7 @@ function Header({
   const [faucetBusy, setFaucetBusy] = useState(false);
   const [faucetMsg, setFaucetMsg] = useState<string | null>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const usdcMintHint = faucetMintHint();
 
   const short = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : null;
   const sep = <span style={{ width: 1, height: 16, background: "rgba(147,197,253,0.5)", flexShrink: 0 }} />;
@@ -435,7 +429,7 @@ function Header({
     }
     let raw: bigint;
     try {
-      raw = parseUsdcToRaw(faucetAmount);
+      raw = parseCollateralToRaw(faucetAmount);
     } catch (e) {
       setFaucetMsg(e instanceof Error ? e.message : "Invalid amount.");
       return;
@@ -450,12 +444,17 @@ function Header({
       return;
     }
 
+    if (usdcMintHint) {
+      setFaucetMsg(usdcMintHint);
+      return;
+    }
+
     setFaucetBusy(true);
     setFaucetMsg(null);
     const low = (raw & ((1n << 128n) - 1n)).toString();
     const high = (raw >> 128n).toString();
     const call = {
-      contractAddress: USDC_ADDRESS,
+      contractAddress: COLLATERAL_USDC,
       entrypoint: "mint",
       calldata: [address, low, high],
     };
@@ -512,14 +511,18 @@ function Header({
 
         {sep}
 
-        <span style={{
-          fontSize: 10, fontWeight: 700, letterSpacing: "0.1em",
-          color: "#2563eb", textTransform: "uppercase",
-          fontFamily: "var(--font-geist-mono)", flexShrink: 0,
-        }}>
-          Sepolia
-        </span>
-        {sep}
+        {!isMobile && (
+          <>
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: "0.1em",
+              color: "#2563eb", textTransform: "uppercase",
+              fontFamily: "var(--font-geist-mono)", flexShrink: 0,
+            }}>
+              Sepolia
+            </span>
+            {sep}
+          </>
+        )}
         <button
           onClick={() => { setFaucetOpen(true); setFaucetMsg(null); }}
           disabled={!address}
@@ -683,7 +686,9 @@ function Header({
                         </svg>
                     }
                   </div>
-                  <p style={{ margin: 0, fontSize: 10, color: "#94a3b8", fontFamily: "var(--font-geist-mono)", marginTop: 1 }}>Starknet Sepolia</p>
+                  {!isMobile && (
+                    <p style={{ margin: 0, fontSize: 10, color: "#94a3b8", fontFamily: "var(--font-geist-mono)", marginTop: 1 }}>Starknet Sepolia</p>
+                  )}
                 </div>
                 {/* Settings gear */}
                 <button
@@ -716,7 +721,9 @@ function Header({
                   { label: "Yield earned", value: "—", unit: "USDC", color: "#16a34a" },
                   { label: "PNL", value: "—", unit: "", color: "#0f2d6b" },
                   { label: "Win rate", value: "—", unit: "", color: "#0f2d6b" },
-                ].map((row, i, arr) => (
+                ]
+                  .filter((row) => !(isMobile && row.label === "Balance"))
+                  .map((row, i, arr) => (
                   <div key={row.label} style={{
                     display: "flex", alignItems: "center", justifyContent: "space-between",
                     padding: "10px 16px",
@@ -849,6 +856,15 @@ function Header({
             <p style={{ margin: "0 0 10px", fontSize: 11, color: "#64748b", fontFamily: "var(--font-geist-mono)" }}>
               Enter amount (max 1000 USDC)
             </p>
+            {usdcMintHint && (
+              <p style={{
+                margin: "0 0 10px", fontSize: 10, lineHeight: 1.45, color: "#b45309",
+                fontFamily: "var(--font-geist-mono)", background: "rgba(254,243,199,0.6)",
+                padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(251,191,36,0.35)",
+              }}>
+                {usdcMintHint}
+              </p>
+            )}
             <div style={{ display: "flex", gap: 8 }}>
               <input
                 type="number"
@@ -857,7 +873,7 @@ function Header({
                 step="0.000001"
                 value={faucetAmount}
                 onChange={(e) => setFaucetAmount(e.target.value)}
-                disabled={faucetBusy}
+                disabled={faucetBusy || Boolean(usdcMintHint)}
                 style={{
                   flex: 1, borderRadius: 10, border: "1px solid rgba(186,230,253,0.9)",
                   background: "rgba(255,255,255,0.9)", padding: "10px 12px",
@@ -866,12 +882,12 @@ function Header({
               />
               <button
                 onClick={() => void handleMintFaucet()}
-                disabled={faucetBusy}
+                disabled={faucetBusy || Boolean(usdcMintHint)}
                 style={{
                   border: "none", borderRadius: 10, padding: "0 14px",
                   fontSize: 12, fontWeight: 700, color: "#fff",
-                  background: faucetBusy ? "rgba(37,99,235,0.45)" : "#2563eb",
-                  cursor: faucetBusy ? "default" : "pointer",
+                  background: faucetBusy || usdcMintHint ? "rgba(37,99,235,0.45)" : "#2563eb",
+                  cursor: faucetBusy || usdcMintHint ? "default" : "pointer",
                 }}
               >
                 {faucetBusy ? "Minting…" : "Mint"}
@@ -1022,110 +1038,39 @@ export default function AppPage() {
   const [tradeAmount, setTradeAmount] = useDefaultTradeAmount();
   const [tradeOpen, setTradeOpen] = useState(false);
   const [tradeMarket, setTradeMarket] = useState<Market | null>(null);
-  const [tradeYes, setTradeYes] = useState(true);
-  const [tradeInput, setTradeInput] = useState("");
-  const [tradeBusy, setTradeBusy] = useState(false);
+  const [tradeInitialYes, setTradeInitialYes] = useState(true);
   const [tradeMsg, setTradeMsg] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch("/api/markets")
-      .then(r => r.json())
-      .then((mData: { markets?: Array<Omit<Market, "logo"> & { logo?: string }> }) => {
-        const apiMarkets = (mData.markets ?? []).map((m) => ({
-          ...m,
-          logo: m.logo || ASSET_LOGO[m.asset] || ASSET_LOGO.ETH,
-        }));
-        setMarkets(apiMarkets);
-      })
-      .catch(() => setMarkets([]))
-      .finally(() => setLoading(false));
+  const refreshMarkets = useCallback(async (showSpinner: boolean) => {
+    if (showSpinner) setLoading(true);
+    try {
+      const r = await fetch("/api/markets", { cache: "no-store" });
+      const mData = (await r.json()) as { markets?: Array<Omit<Market, "logo"> & { logo?: string }> };
+      const apiMarkets = (mData.markets ?? []).map((m) => ({
+        ...m,
+        logo: m.logo || ASSET_LOGO[m.asset] || ASSET_LOGO.ETH,
+      }));
+      setMarkets(apiMarkets);
+    } catch {
+      if (showSpinner) setMarkets([]);
+    } finally {
+      if (showSpinner) setLoading(false);
+    }
   }, []);
 
-  const executeBuy = async (market: Market, yes: boolean, amountInput: string, fromDrawer = false) => {
-    if (!address || !wallet || !method) {
-      setConnectOpen(true);
-      return;
-    }
-    let raw: bigint;
-    try {
-      raw = parseUsdcToRaw(amountInput);
-    } catch (e) {
-      setTradeMsg(e instanceof Error ? e.message : "Invalid amount.");
-      return;
-    }
-    if (raw <= 0n) {
-      setTradeMsg("Amount must be greater than 0.");
-      return;
-    }
-
-    const low = (raw & ((1n << 128n) - 1n)).toString();
-    const high = (raw >> 128n).toString();
-    const calls = [
-      {
-        contractAddress: USDC_ADDRESS,
-        entrypoint: "approve",
-        calldata: [process.env.NEXT_PUBLIC_DIVVY_FPMM ?? "", low, high],
-      },
-      {
-        contractAddress: process.env.NEXT_PUBLIC_DIVVY_FPMM ?? "",
-        entrypoint: "buy",
-        calldata: [market.id, yes ? "0x1" : "0x0", low, high, "0", "0"],
-      },
-    ];
-
-    if (!calls[0].contractAddress) {
-      setTradeMsg("Missing NEXT_PUBLIC_DIVVY_FPMM in env.");
-      return;
-    }
-
-    setTradeBusy(true);
-    setTradeMsg(null);
-    try {
-      if (method === "cartridge") {
-        const cw = wallet as { execute: (c: Array<{ contractAddress: string; entrypoint: string; calldata: string[] }>) => Promise<{ hash: string }> };
-        await cw.execute(calls);
-      } else {
-        const { WalletAccount, RpcProvider: Provider } = await import("starknet");
-        const provider = new Provider({ nodeUrl: RPC_URL });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const account = new WalletAccount({ provider, walletProvider: wallet as any, address });
-        await account.execute(calls);
-      }
-      const side = yes ? "YES" : "NO";
-      const success = `Trade submitted: ${side} ${amountInput} USDC on "${market.asset}"`;
-      setTradeMsg(success);
-      if (fromDrawer) setTradeOpen(false);
-    } catch (e) {
-      setTradeMsg(e instanceof Error ? e.message : "Trade failed.");
-    } finally {
-      setTradeBusy(false);
-    }
-  };
+  useEffect(() => {
+    void refreshMarkets(true);
+  }, [refreshMarkets]);
 
   const handleVote = (market: Market, yes: boolean) => {
     if (!address || !wallet || !method) {
       setConnectOpen(true);
       return;
     }
-    // If a default amount exists, execute immediately (sign only).
-    try {
-      const raw = parseUsdcToRaw(tradeAmount);
-      if (raw > 0n) {
-        void executeBuy(market, yes, tradeAmount);
-        return;
-      }
-    } catch {
-      // Fall back to drawer input.
-    }
-    if (!isMobile) {
-      setTradeMarket(market);
-      setTradeYes(yes);
-      setTradeInput("");
-      setTradeMsg(null);
-      setTradeOpen(true);
-      return;
-    }
-    setTradeMsg("Set a default trade amount in profile settings for swipe trading.");
+    setTradeMarket(market);
+    setTradeInitialYes(yes);
+    setTradeMsg(null);
+    setTradeOpen(true);
   };
 
   return (
@@ -1199,93 +1144,25 @@ export default function AppPage() {
           </div>
         )}
 
-        {!isMobile && tradeOpen && tradeMarket && (
-          <div style={{ position: "fixed", inset: 0, zIndex: 110, pointerEvents: "none" }}>
-            <div
-              onClick={() => { if (!tradeBusy) setTradeOpen(false); }}
-              style={{
-                position: "absolute",
-                inset: 0,
-                background: "rgba(15,23,42,0.18)",
-                backdropFilter: "blur(2px)",
-                WebkitBackdropFilter: "blur(2px)",
-                pointerEvents: "auto",
-              }}
-            />
-            <aside
-              style={{
-                position: "absolute",
-                top: 0,
-                right: 0,
-                height: "100%",
-                width: "min(92vw, 360px)",
-                background: "rgba(255,255,255,0.98)",
-                borderLeft: "1px solid rgba(186,230,253,0.8)",
-                boxShadow: "-18px 0 44px rgba(96,165,250,0.2)",
-                padding: "18px 16px 14px",
-                display: "flex",
-                flexDirection: "column",
-                gap: 12,
-                pointerEvents: "auto",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#0f2d6b" }}>Place trade</p>
-                <button
-                  onClick={() => { if (!tradeBusy) setTradeOpen(false); }}
-                  style={{ border: "none", background: "none", fontSize: 18, lineHeight: 1, color: "rgba(30,64,175,0.45)", cursor: tradeBusy ? "default" : "pointer" }}
-                >
-                  ×
-                </button>
-              </div>
-              <p style={{ margin: 0, fontSize: 11, color: "#475569", lineHeight: 1.5 }}>
-                {tradeMarket.question}
-              </p>
-              <p style={{ margin: 0, fontSize: 10, color: "#64748b", fontFamily: "var(--font-geist-mono)" }}>
-                Side: <strong style={{ color: tradeYes ? "#15803d" : "#dc2626" }}>{tradeYes ? "YES" : "NO"}</strong>
-              </p>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  type="number"
-                  min="0.000001"
-                  step="0.000001"
-                  placeholder="USDC amount"
-                  value={tradeInput}
-                  disabled={tradeBusy}
-                  onChange={(e) => setTradeInput(e.target.value)}
-                  style={{
-                    flex: 1,
-                    borderRadius: 10,
-                    border: "1px solid rgba(186,230,253,0.9)",
-                    background: "rgba(255,255,255,0.95)",
-                    padding: "10px 12px",
-                    fontSize: 13,
-                    color: "#0f2d6b",
-                    outline: "none",
-                  }}
-                />
-                <button
-                  onClick={() => void executeBuy(tradeMarket, tradeYes, tradeInput, true)}
-                  disabled={tradeBusy}
-                  style={{
-                    border: "none",
-                    borderRadius: 10,
-                    padding: "0 14px",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: "#fff",
-                    background: tradeBusy ? "rgba(37,99,235,0.45)" : "#2563eb",
-                    cursor: tradeBusy ? "default" : "pointer",
-                  }}
-                >
-                  {tradeBusy ? "Signing…" : "Sign"}
-                </button>
-              </div>
-              <p style={{ margin: 0, fontSize: 10, color: "#64748b", fontFamily: "var(--font-geist-mono)" }}>
-                Tip: set a default amount in profile settings to skip this panel next time.
-              </p>
-            </aside>
-          </div>
+        {tradeOpen && tradeMarket && (
+          <MarketTradePanel
+            open={tradeOpen}
+            market={tradeMarket}
+            initialOutcomeYes={tradeInitialYes}
+            defaultAmount={tradeAmount}
+            address={address ?? null}
+            wallet={wallet}
+            method={method}
+            isMobile={isMobile}
+            rpcUrl={RPC_URL}
+            onClose={() => setTradeOpen(false)}
+            onNeedConnect={() => {
+              setTradeOpen(false);
+              setConnectOpen(true);
+            }}
+            onNotify={(msg) => setTradeMsg(msg)}
+            onMarketsUpdated={() => void refreshMarkets(false)}
+          />
         )}
 
         {activeTab !== "markets" && <ComingSoon label={NAV_ITEMS.find(n => n.id === activeTab)!.label} />}
